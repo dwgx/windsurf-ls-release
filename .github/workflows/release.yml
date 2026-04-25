@@ -34,7 +34,6 @@ jobs:
           - next
     env:
       RELEASE_CHANNEL: ${{ matrix.channel }}
-      WORK_ROOT: ${{ runner.temp }}/windsurf-release/${{ matrix.channel }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -73,7 +72,7 @@ jobs:
 
       - name: Create manifest directory
         if: steps.channel_filter.outputs.enabled == 'true'
-        run: mkdir -p "$WORK_ROOT"
+        run: mkdir -p "$RUNNER_TEMP/windsurf-release/$RELEASE_CHANNEL"
 
       - name: Discover latest release
         if: steps.channel_filter.outputs.enabled == 'true'
@@ -81,7 +80,7 @@ jobs:
         run: |
           python3 scripts/discover_release.py \
             --channel "$RELEASE_CHANNEL" \
-            --manifest-out "$WORK_ROOT/manifest.json"
+            --manifest-out "$RUNNER_TEMP/windsurf-release/$RELEASE_CHANNEL/manifest.json"
 
       - name: Upload manifest artifact
         if: steps.channel_filter.outputs.enabled == 'true'
@@ -123,11 +122,11 @@ jobs:
         id: build_assets
         continue-on-error: true
         run: |
-          mkdir -p "$WORK_ROOT/dist"
+          mkdir -p "$RUNNER_TEMP/windsurf-release/$RELEASE_CHANNEL/dist"
           python3 scripts/build_assets.py \
-            --manifest "$WORK_ROOT/manifest.json" \
-            --dist-dir "$WORK_ROOT/dist" \
-            --summary-out "$WORK_ROOT/summary.json"
+            --manifest "$RUNNER_TEMP/windsurf-release/$RELEASE_CHANNEL/manifest.json" \
+            --dist-dir "$RUNNER_TEMP/windsurf-release/$RELEASE_CHANNEL/dist" \
+            --summary-out "$RUNNER_TEMP/windsurf-release/$RELEASE_CHANNEL/summary.json"
 
       - name: Upload extracted assets artifact
         if: always() && steps.channel_filter.outputs.enabled == 'true'
@@ -170,8 +169,8 @@ jobs:
         if: steps.channel_filter.outputs.enabled == 'true' && steps.release_check.outputs.skip != 'true' && steps.build_assets.outcome == 'success' && steps.publish_mode.outputs.publish == 'true'
         run: |
           python3 scripts/render_release_notes.py \
-            --summary "$WORK_ROOT/summary.json" \
-            --output "$WORK_ROOT/release-notes.md"
+            --summary "$RUNNER_TEMP/windsurf-release/$RELEASE_CHANNEL/summary.json" \
+            --output "$RUNNER_TEMP/windsurf-release/$RELEASE_CHANNEL/release-notes.md"
 
       - name: Create draft release
         if: steps.channel_filter.outputs.enabled == 'true' && steps.release_check.outputs.skip != 'true' && steps.build_assets.outcome == 'success' && steps.publish_mode.outputs.publish == 'true'
@@ -183,7 +182,7 @@ jobs:
           gh release create "$TAG" \
             --draft \
             --title "$RELEASE_NAME" \
-            --notes-file "$WORK_ROOT/release-notes.md"
+            --notes-file "$RUNNER_TEMP/windsurf-release/$RELEASE_CHANNEL/release-notes.md"
 
       - name: Upload release assets
         if: steps.channel_filter.outputs.enabled == 'true' && steps.release_check.outputs.skip != 'true' && steps.build_assets.outcome == 'success' && steps.publish_mode.outputs.publish == 'true'
@@ -191,7 +190,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.discover.outputs.tag }}
         run: |
-          gh release upload "$TAG" "$WORK_ROOT/dist/"* --clobber
+          gh release upload "$TAG" "$RUNNER_TEMP/windsurf-release/$RELEASE_CHANNEL/dist/"* --clobber
 
       - name: Publish release
         if: steps.channel_filter.outputs.enabled == 'true' && steps.release_check.outputs.skip != 'true' && steps.build_assets.outcome == 'success' && steps.publish_mode.outputs.publish == 'true'
@@ -201,4 +200,4 @@ jobs:
         run: |
           gh release edit "$TAG" \
             --draft=false \
-            --notes-file "$WORK_ROOT/release-notes.md"
+            --notes-file "$RUNNER_TEMP/windsurf-release/$RELEASE_CHANNEL/release-notes.md"
