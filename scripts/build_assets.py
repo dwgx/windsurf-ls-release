@@ -272,6 +272,8 @@ def main() -> int:
     dist_dir.mkdir(parents=True, exist_ok=True)
 
     summary = {
+        "channel": manifest.get("channel", "stable"),
+        "source_url": manifest.get("source_url"),
         "version": manifest["version"],
         "tag": manifest["tag"],
         "release_name": manifest["release_name"],

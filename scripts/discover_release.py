@@ -8,7 +8,20 @@ import urllib.request
 from pathlib import Path
 
 
-RELEASES_URL = "https://windsurf.com/editor/releases"
+RELEASE_CHANNELS = {
+    "stable": {
+        "url": "https://windsurf.com/editor/releases",
+        "field_name": "stableReleases",
+        "tag_prefix": "",
+        "release_name_prefix": "Windsurf",
+    },
+    "next": {
+        "url": "https://windsurf.com/editor/releases?type=next",
+        "field_name": "nextReleases",
+        "tag_prefix": "next-",
+        "release_name_prefix": "Windsurf Next",
+    },
+}
 
 CANONICAL_TARGETS = [
     {
@@ -94,12 +107,13 @@ def extract_escaped_json_array(html: str, field_name: str) -> list[dict]:
     raise ValueError(f"Could not find the closing bracket for field {field_name!r}.")
 
 
-def build_manifest(stable_releases: list[dict]) -> dict:
-    if not stable_releases:
-        raise ValueError("The stableReleases array is empty.")
+def build_manifest(releases: list[dict], channel: str, source_url: str) -> dict:
+    if not releases:
+        raise ValueError(f"The {channel} releases array is empty.")
 
-    latest = stable_releases[0]
+    latest = releases[0]
     version = latest["version"]
+    channel_config = RELEASE_CHANNELS[channel]
 
     all_entries: list[dict] = []
     for platform_name in ("MacOS", "Windows", "Linux"):
@@ -131,9 +145,11 @@ def build_manifest(stable_releases: list[dict]) -> dict:
         )
 
     return {
+        "channel": channel,
+        "source_url": source_url,
         "version": version,
-        "tag": f"v{version}",
-        "release_name": f"Windsurf {version}",
+        "tag": f"{channel_config['tag_prefix']}v{version}",
+        "release_name": f"{channel_config['release_name_prefix']} {version}",
         "targets": targets,
     }
 
@@ -144,6 +160,7 @@ def write_github_output(manifest: dict) -> None:
         return
 
     with open(output_path, "a", encoding="utf-8") as handle:
+        handle.write(f"channel={manifest['channel']}\n")
         handle.write(f"version={manifest['version']}\n")
         handle.write(f"tag={manifest['tag']}\n")
         handle.write(f"release_name={manifest['release_name']}\n")
@@ -151,16 +168,19 @@ def write_github_output(manifest: dict) -> None:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--url", default=RELEASES_URL)
+    parser.add_argument("--channel", choices=sorted(RELEASE_CHANNELS), default="stable")
+    parser.add_argument("--url")
     parser.add_argument("--manifest-out", required=True)
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
-    html = fetch_html(args.url)
-    stable_releases = extract_escaped_json_array(html, "stableReleases")
-    manifest = build_manifest(stable_releases)
+    channel_config = RELEASE_CHANNELS[args.channel]
+    source_url = args.url or channel_config["url"]
+    html = fetch_html(source_url)
+    releases = extract_escaped_json_array(html, channel_config["field_name"])
+    manifest = build_manifest(releases, args.channel, source_url)
 
     manifest_path = Path(args.manifest_out)
     manifest_path.parent.mkdir(parents=True, exist_ok=True)

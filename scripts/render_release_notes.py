@@ -14,13 +14,19 @@ def append_detail(lines: list[str], label: str, value: object) -> None:
 
 
 def render_notes(summary: dict) -> str:
+    channel = summary.get("channel", "stable")
     lines = [
         f"Extracted language server binaries from Windsurf {summary['version']}.",
         "",
+        f"Release channel: {channel}",
+        f"Release tag: {summary['tag']}",
         f"Generated at: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}",
         "",
         "Successful targets:",
     ]
+
+    if summary.get("source_url"):
+        lines.insert(3, f"Source page: {summary['source_url']}")
 
     if summary["successful_targets"]:
         for item in summary["successful_targets"]:

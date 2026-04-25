@@ -1,6 +1,6 @@
 # windsurf-linux-server-release
 
-This repository tracks the latest stable Windsurf release from `https://windsurf.com/editor/releases`, extracts canonical `language_server_*` binaries from archive downloads, and publishes them as GitHub Release assets.
+This repository tracks the latest stable and next Windsurf releases from `https://windsurf.com/editor/releases`, extracts canonical `language_server_*` binaries from archive downloads, and publishes them as GitHub Release assets.
 
 ## Published assets
 
@@ -23,7 +23,7 @@ This repository tracks the latest stable Windsurf release from `https://windsurf
 
 ## Safe validation on branches
 
-Feature-branch runs still parse the latest stable release and build artifacts, but they do not create a GitHub Release. Download the `windsurf-assets` artifact from the run to inspect extracted binaries.
+Feature-branch runs parse both stable and next release channels and build artifacts, but they do not create a GitHub Release. Download the `windsurf-assets-stable` and `windsurf-assets-next` artifacts from the run to inspect extracted binaries.
 
 ```bash
 gh run list --branch "$(git branch --show-current)" --limit 5
@@ -34,4 +34,4 @@ gh api repos/CaiJingLong/windsurf-linux-server-release/actions/runs/"$RUN_ID"/ar
 
 ## Publishing from the default branch
 
-After merging to the default branch, trigger the workflow manually or wait for the daily schedule. If the latest stable version already exists as `v<version>`, the workflow exits early. Otherwise it creates a draft release, uploads extracted assets, and publishes the release.
+After merging to the default branch, trigger the workflow manually or wait for the daily schedule. Stable releases use tags like `v<version>`, while next releases use tags like `next-v<version>`. If a tag already exists, that channel exits early. Otherwise it creates a draft release, uploads extracted assets, and publishes the release.

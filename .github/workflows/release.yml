@@ -6,6 +6,16 @@ on:
       - main
       - master
   workflow_dispatch:
+    inputs:
+      channel:
+        description: Release channel to process
+        required: false
+        default: all
+        type: choice
+        options:
+          - all
+          - stable
+          - next
   schedule:
     - cron: "17 3 * * *"
 
@@ -13,31 +23,50 @@ permissions:
   contents: write
 
 jobs:
-  discover:
+  release:
+    name: release (${{ matrix.channel }})
+    if: github.event_name != 'workflow_dispatch' || github.event.inputs.channel == 'all' || github.event.inputs.channel == matrix.channel
     runs-on: ubuntu-latest
-    outputs:
-      version: ${{ steps.discover.outputs.version }}
-      tag: ${{ steps.discover.outputs.tag }}
-      release_name: ${{ steps.discover.outputs.release_name }}
-      skip: ${{ steps.release_check.outputs.skip }}
+    strategy:
+      fail-fast: false
+      matrix:
+        channel:
+          - stable
+          - next
+    env:
+      RELEASE_CHANNEL: ${{ matrix.channel }}
+      WORK_ROOT: ${{ runner.temp }}/windsurf-release/${{ matrix.channel }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
 
-      - name: Create manifest directory
-        run: mkdir -p "$RUNNER_TEMP/windsurf-release"
+      - name: Detect publish mode
+        id: publish_mode
+        run: |
+          echo "channel=$RELEASE_CHANNEL" >> "$GITHUB_STEP_SUMMARY"
+          echo "ref_name=$GITHUB_REF_NAME" >> "$GITHUB_STEP_SUMMARY"
+          echo "default_branch=${{ github.event.repository.default_branch }}" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$GITHUB_REF_NAME" = "${{ github.event.repository.default_branch }}" ]; then
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          fi
 
-      - name: Discover latest stable release
+      - name: Create manifest directory
+        run: mkdir -p "$WORK_ROOT"
+
+      - name: Discover latest release
         id: discover
         run: |
           python3 scripts/discover_release.py \
-            --manifest-out "$RUNNER_TEMP/windsurf-release/manifest.json"
+            --channel "$RELEASE_CHANNEL" \
+            --manifest-out "$WORK_ROOT/manifest.json"
 
       - name: Upload manifest artifact
         uses: actions/upload-artifact@v7
         with:
-          name: release-manifest
-          path: ${{ runner.temp }}/windsurf-release/manifest.json
+          name: release-manifest-${{ matrix.channel }}
+          path: ${{ runner.temp }}/windsurf-release/${{ matrix.channel }}/manifest.json
 
       - name: Check whether release already exists
         id: release_check
@@ -58,109 +87,94 @@ jobs:
       - name: Write discovery summary
         run: |
           {
-            echo "## Discovery"
+            echo "## Discovery ($RELEASE_CHANNEL)"
+            echo "- Channel: $RELEASE_CHANNEL"
             echo "- Version: ${{ steps.discover.outputs.version }}"
             echo "- Tag: ${{ steps.discover.outputs.tag }}"
             echo "- Skip existing release: ${{ steps.release_check.outputs.skip }}"
           } >> "$GITHUB_STEP_SUMMARY"
 
-  release:
-    needs: discover
-    if: needs.discover.outputs.skip != 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
-
-      - name: Detect publish mode
-        id: publish_mode
-        run: |
-          echo "ref_name=$GITHUB_REF_NAME" >> "$GITHUB_STEP_SUMMARY"
-          echo "default_branch=${{ github.event.repository.default_branch }}" >> "$GITHUB_STEP_SUMMARY"
-          if [ "$GITHUB_REF_NAME" = "${{ github.event.repository.default_branch }}" ]; then
-            echo "publish=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "publish=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Download manifest artifact
-        uses: actions/download-artifact@v8
-        with:
-          name: release-manifest
-          path: ${{ runner.temp }}/windsurf-release
-
       - name: Build extracted assets
+        if: steps.release_check.outputs.skip != 'true'
         id: build_assets
         continue-on-error: true
         run: |
-          mkdir -p "$RUNNER_TEMP/windsurf-release/dist"
+          mkdir -p "$WORK_ROOT/dist"
           python3 scripts/build_assets.py \
-            --manifest "$RUNNER_TEMP/windsurf-release/manifest.json" \
-            --dist-dir "$RUNNER_TEMP/windsurf-release/dist" \
-            --summary-out "$RUNNER_TEMP/windsurf-release/summary.json"
+            --manifest "$WORK_ROOT/manifest.json" \
+            --dist-dir "$WORK_ROOT/dist" \
+            --summary-out "$WORK_ROOT/summary.json"
 
       - name: Upload extracted assets artifact
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: windsurf-assets
-          path: ${{ runner.temp }}/windsurf-release/dist
+          name: windsurf-assets-${{ matrix.channel }}
+          path: ${{ runner.temp }}/windsurf-release/${{ matrix.channel }}/dist
           if-no-files-found: ignore
 
       - name: Upload build summary artifact
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: release-summary
-          path: ${{ runner.temp }}/windsurf-release/summary.json
+          name: release-summary-${{ matrix.channel }}
+          path: ${{ runner.temp }}/windsurf-release/${{ matrix.channel }}/summary.json
           if-no-files-found: ignore
 
-      - name: Note skipped publication on non-default branches
-        if: steps.publish_mode.outputs.publish != 'true'
+      - name: Note skipped existing release
+        if: steps.release_check.outputs.skip == 'true'
         run: |
           {
-            echo "## Branch validation"
+            echo "## Skip ($RELEASE_CHANNEL)"
+            echo "- Release tag ${{ steps.discover.outputs.tag }} already exists on default branch"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Note skipped publication on non-default branches
+        if: steps.release_check.outputs.skip != 'true' && steps.publish_mode.outputs.publish != 'true'
+        run: |
+          {
+            echo "## Branch validation ($RELEASE_CHANNEL)"
             echo "- Publish steps are skipped on branch $GITHUB_REF_NAME"
-            echo "- Download the artifact named windsurf-assets to inspect extracted binaries"
+            echo "- Download the artifact named windsurf-assets-${RELEASE_CHANNEL} to inspect extracted binaries"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Fail job when required extraction fails
-        if: steps.build_assets.outcome != 'success'
+        if: steps.release_check.outputs.skip != 'true' && steps.build_assets.outcome != 'success'
         run: exit 1
 
       - name: Render release notes
-        if: steps.build_assets.outcome == 'success' && steps.publish_mode.outputs.publish == 'true'
+        if: steps.release_check.outputs.skip != 'true' && steps.build_assets.outcome == 'success' && steps.publish_mode.outputs.publish == 'true'
         run: |
           python3 scripts/render_release_notes.py \
-            --summary "$RUNNER_TEMP/windsurf-release/summary.json" \
-            --output "$RUNNER_TEMP/windsurf-release/release-notes.md"
+            --summary "$WORK_ROOT/summary.json" \
+            --output "$WORK_ROOT/release-notes.md"
 
       - name: Create draft release
-        if: steps.build_assets.outcome == 'success' && steps.publish_mode.outputs.publish == 'true'
+        if: steps.release_check.outputs.skip != 'true' && steps.build_assets.outcome == 'success' && steps.publish_mode.outputs.publish == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ needs.discover.outputs.tag }}
-          RELEASE_NAME: ${{ needs.discover.outputs.release_name }}
+          TAG: ${{ steps.discover.outputs.tag }}
+          RELEASE_NAME: ${{ steps.discover.outputs.release_name }}
         run: |
           gh release create "$TAG" \
             --draft \
             --title "$RELEASE_NAME" \
-            --notes-file "$RUNNER_TEMP/windsurf-release/release-notes.md"
+            --notes-file "$WORK_ROOT/release-notes.md"
 
       - name: Upload release assets
-        if: steps.build_assets.outcome == 'success' && steps.publish_mode.outputs.publish == 'true'
+        if: steps.release_check.outputs.skip != 'true' && steps.build_assets.outcome == 'success' && steps.publish_mode.outputs.publish == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ needs.discover.outputs.tag }}
+          TAG: ${{ steps.discover.outputs.tag }}
         run: |
-          gh release upload "$TAG" "$RUNNER_TEMP/windsurf-release/dist/"* --clobber
+          gh release upload "$TAG" "$WORK_ROOT/dist/"* --clobber
 
       - name: Publish release
-        if: steps.build_assets.outcome == 'success' && steps.publish_mode.outputs.publish == 'true'
+        if: steps.release_check.outputs.skip != 'true' && steps.build_assets.outcome == 'success' && steps.publish_mode.outputs.publish == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ needs.discover.outputs.tag }}
+          TAG: ${{ steps.discover.outputs.tag }}
         run: |
           gh release edit "$TAG" \
             --draft=false \
-            --notes-file "$RUNNER_TEMP/windsurf-release/release-notes.md"
+            --notes-file "$WORK_ROOT/release-notes.md"
