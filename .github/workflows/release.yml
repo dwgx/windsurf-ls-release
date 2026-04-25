@@ -25,7 +25,6 @@ permissions:
 jobs:
   release:
     name: release (${{ matrix.channel }})
-    if: github.event_name != 'workflow_dispatch' || github.event.inputs.channel == 'all' || github.event.inputs.channel == matrix.channel
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -40,7 +39,27 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
 
+      - name: Decide whether to run this channel
+        id: channel_filter
+        env:
+          SELECTED_CHANNEL: ${{ github.event.inputs.channel }}
+        run: |
+          if [ "${{ github.event_name }}" != "workflow_dispatch" ] || [ -z "$SELECTED_CHANNEL" ] || [ "$SELECTED_CHANNEL" = "all" ] || [ "$SELECTED_CHANNEL" = "$RELEASE_CHANNEL" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Note filtered channel
+        if: steps.channel_filter.outputs.enabled != 'true'
+        run: |
+          {
+            echo "## Skip ($RELEASE_CHANNEL)"
+            echo "- workflow_dispatch input filtered out this channel"
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Detect publish mode
+        if: steps.channel_filter.outputs.enabled == 'true'
         id: publish_mode
         run: |
           echo "channel=$RELEASE_CHANNEL" >> "$GITHUB_STEP_SUMMARY"
@@ -53,9 +72,11 @@ jobs:
           fi
 
       - name: Create manifest directory
+        if: steps.channel_filter.outputs.enabled == 'true'
         run: mkdir -p "$WORK_ROOT"
 
       - name: Discover latest release
+        if: steps.channel_filter.outputs.enabled == 'true'
         id: discover
         run: |
           python3 scripts/discover_release.py \
@@ -63,12 +84,14 @@ jobs:
             --manifest-out "$WORK_ROOT/manifest.json"
 
       - name: Upload manifest artifact
+        if: steps.channel_filter.outputs.enabled == 'true'
         uses: actions/upload-artifact@v7
         with:
           name: release-manifest-${{ matrix.channel }}
           path: ${{ runner.temp }}/windsurf-release/${{ matrix.channel }}/manifest.json
 
       - name: Check whether release already exists
+        if: steps.channel_filter.outputs.enabled == 'true'
         id: release_check
         env:
           GH_TOKEN: ${{ github.token }}
@@ -85,6 +108,7 @@ jobs:
           fi
 
       - name: Write discovery summary
+        if: steps.channel_filter.outputs.enabled == 'true'
         run: |
           {
             echo "## Discovery ($RELEASE_CHANNEL)"
@@ -95,7 +119,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Build extracted assets
-        if: steps.release_check.outputs.skip != 'true'
+        if: steps.channel_filter.outputs.enabled == 'true' && steps.release_check.outputs.skip != 'true'
         id: build_assets
         continue-on-error: true
         run: |
@@ -106,7 +130,7 @@ jobs:
             --summary-out "$WORK_ROOT/summary.json"
 
       - name: Upload extracted assets artifact
-        if: always()
+        if: always() && steps.channel_filter.outputs.enabled == 'true'
         uses: actions/upload-artifact@v7
         with:
           name: windsurf-assets-${{ matrix.channel }}
@@ -114,7 +138,7 @@ jobs:
           if-no-files-found: ignore
 
       - name: Upload build summary artifact
-        if: always()
+        if: always() && steps.channel_filter.outputs.enabled == 'true'
         uses: actions/upload-artifact@v7
         with:
           name: release-summary-${{ matrix.channel }}
@@ -122,7 +146,7 @@ jobs:
           if-no-files-found: ignore
 
       - name: Note skipped existing release
-        if: steps.release_check.outputs.skip == 'true'
+        if: steps.channel_filter.outputs.enabled == 'true' && steps.release_check.outputs.skip == 'true'
         run: |
           {
             echo "## Skip ($RELEASE_CHANNEL)"
@@ -130,7 +154,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Note skipped publication on non-default branches
-        if: steps.release_check.outputs.skip != 'true' && steps.publish_mode.outputs.publish != 'true'
+        if: steps.channel_filter.outputs.enabled == 'true' && steps.release_check.outputs.skip != 'true' && steps.publish_mode.outputs.publish != 'true'
         run: |
           {
             echo "## Branch validation ($RELEASE_CHANNEL)"
@@ -139,18 +163,18 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Fail job when required extraction fails
-        if: steps.release_check.outputs.skip != 'true' && steps.build_assets.outcome != 'success'
+        if: steps.channel_filter.outputs.enabled == 'true' && steps.release_check.outputs.skip != 'true' && steps.build_assets.outcome != 'success'
         run: exit 1
 
       - name: Render release notes
-        if: steps.release_check.outputs.skip != 'true' && steps.build_assets.outcome == 'success' && steps.publish_mode.outputs.publish == 'true'
+        if: steps.channel_filter.outputs.enabled == 'true' && steps.release_check.outputs.skip != 'true' && steps.build_assets.outcome == 'success' && steps.publish_mode.outputs.publish == 'true'
         run: |
           python3 scripts/render_release_notes.py \
             --summary "$WORK_ROOT/summary.json" \
             --output "$WORK_ROOT/release-notes.md"
 
       - name: Create draft release
-        if: steps.release_check.outputs.skip != 'true' && steps.build_assets.outcome == 'success' && steps.publish_mode.outputs.publish == 'true'
+        if: steps.channel_filter.outputs.enabled == 'true' && steps.release_check.outputs.skip != 'true' && steps.build_assets.outcome == 'success' && steps.publish_mode.outputs.publish == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.discover.outputs.tag }}
@@ -162,7 +186,7 @@ jobs:
             --notes-file "$WORK_ROOT/release-notes.md"
 
       - name: Upload release assets
-        if: steps.release_check.outputs.skip != 'true' && steps.build_assets.outcome == 'success' && steps.publish_mode.outputs.publish == 'true'
+        if: steps.channel_filter.outputs.enabled == 'true' && steps.release_check.outputs.skip != 'true' && steps.build_assets.outcome == 'success' && steps.publish_mode.outputs.publish == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.discover.outputs.tag }}
@@ -170,7 +194,7 @@ jobs:
           gh release upload "$TAG" "$WORK_ROOT/dist/"* --clobber
 
       - name: Publish release
-        if: steps.release_check.outputs.skip != 'true' && steps.build_assets.outcome == 'success' && steps.publish_mode.outputs.publish == 'true'
+        if: steps.channel_filter.outputs.enabled == 'true' && steps.release_check.outputs.skip != 'true' && steps.build_assets.outcome == 'success' && steps.publish_mode.outputs.publish == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.discover.outputs.tag }}
