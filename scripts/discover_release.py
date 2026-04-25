@@ -121,6 +121,12 @@ def build_manifest(stable_releases: list[dict]) -> dict:
                 "archive_type": canonical_target["archive_type"],
                 "required": canonical_target["required"],
                 "expected_binary_name": canonical_target["expected_binary_name"],
+                "package_name": entry.get("name"),
+                "package_product_version": entry.get("productVersion"),
+                "package_version": entry.get("version"),
+                "package_notes": entry.get("notes"),
+                "package_timestamp": entry.get("timestamp"),
+                "package_sha256": entry.get("sha256hash"),
             }
         )
 
