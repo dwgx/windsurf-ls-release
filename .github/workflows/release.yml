@@ -22,7 +22,7 @@ jobs:
       skip: ${{ steps.release_check.outputs.skip }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Create manifest directory
         run: mkdir -p "$RUNNER_TEMP/windsurf-release"
@@ -34,7 +34,7 @@ jobs:
             --manifest-out "$RUNNER_TEMP/windsurf-release/manifest.json"
 
       - name: Upload manifest artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: release-manifest
           path: ${{ runner.temp }}/windsurf-release/manifest.json
@@ -70,7 +70,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Detect publish mode
         id: publish_mode
@@ -84,7 +84,7 @@ jobs:
           fi
 
       - name: Download manifest artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: release-manifest
           path: ${{ runner.temp }}/windsurf-release
@@ -101,7 +101,7 @@ jobs:
 
       - name: Upload extracted assets artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: windsurf-assets
           path: ${{ runner.temp }}/windsurf-release/dist
@@ -109,7 +109,7 @@ jobs:
 
       - name: Upload build summary artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: release-summary
           path: ${{ runner.temp }}/windsurf-release/summary.json
