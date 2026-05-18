@@ -108,6 +108,11 @@ def format_unix_timestamp(raw_value: str | int | None) -> str | None:
     except (TypeError, ValueError):
         return None
 
+    # Upstream package metadata now uses Unix timestamps in milliseconds.
+    # Keep accepting second-based timestamps for older payloads.
+    if abs(timestamp) >= 10**11:
+        timestamp //= 1000
+
     return datetime.fromtimestamp(timestamp, tz=timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
 
