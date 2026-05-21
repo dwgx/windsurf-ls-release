@@ -35,3 +35,12 @@ gh api repos/CaiJingLong/windsurf-linux-server-release/actions/runs/"$RUN_ID"/ar
 ## Publishing from the default branch
 
 After merging to the default branch, trigger the workflow manually or wait for the daily schedule. Stable releases use tags like `v<version>`, while next releases use tags like `next-v<version>`. If a tag already exists, that channel exits early. Otherwise it creates a draft release, uploads extracted assets, and publishes the release.
+
+## Local Linux x64 updater
+
+```bash
+LS_CHANNEL=stable ./tools/update_ls_linux_x64.sh
+LS_BINARY_PATH=/tmp/language_server_linux_x64 LS_CHANNEL=next ./tools/update_ls_linux_x64.sh
+```
+
+The updater prefers the `ghfast.top` proxy for asset downloads and falls back to direct GitHub downloads if the proxy fails. It also verifies the downloaded `language_server_linux_x64` binary against the sha256 published in the release notes before replacing the local file.
