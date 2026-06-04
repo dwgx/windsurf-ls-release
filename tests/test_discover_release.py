@@ -9,9 +9,9 @@ from pathlib import Path
 def load_discover_release_module():
     module_path = Path(__file__).resolve().parents[1] / "scripts" / "discover_release.py"
     spec = importlib.util.spec_from_file_location("discover_release", module_path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Could not load discover_release module from {module_path}")
     module = importlib.util.module_from_spec(spec)
-    assert spec is not None
-    assert spec.loader is not None
     spec.loader.exec_module(module)
     return module
 
@@ -81,6 +81,16 @@ class DiscoverReleaseTests(unittest.TestCase):
 
         self.assertEqual(releases[0]["version"], "3.0.1019")
         self.assertEqual(releases[0]["MacOS"][0]["productVersion"], "3.0.1019")
+
+    def test_package_name_from_url_decodes_and_trims_paths(self) -> None:
+        self.assertEqual(
+            discover_release.package_name_from_url("https://example.test/releases/Devin%20Linux.tar.gz"),
+            "Devin Linux.tar.gz",
+        )
+        self.assertEqual(
+            discover_release.package_name_from_url("https://example.test/releases/Devin-linux-x64/"),
+            "Devin-linux-x64",
+        )
 
     def test_builds_manifest_for_devin_desktop_release(self) -> None:
         releases = discover_release.extract_releases(

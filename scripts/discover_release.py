@@ -118,8 +118,8 @@ def extract_escaped_json_array(html: str, field_name: str) -> list[dict]:
 
 
 def package_name_from_url(url: str) -> str:
-    path = urllib.parse.urlparse(url).path
-    return Path(path).name
+    path = urllib.parse.urlparse(url).path.rstrip("/")
+    return urllib.parse.unquote(Path(path).name)
 
 
 def extract_mdx_release_components(html: str) -> list[dict]:
