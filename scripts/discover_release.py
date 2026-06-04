@@ -4,22 +4,24 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
 
 RELEASE_CHANNELS = {
     "stable": {
-        "url": "https://windsurf.com/editor/releases",
+        "url": "https://docs.devin.ai/desktop/releases",
         "field_name": "stableReleases",
         "tag_prefix": "",
-        "release_name_prefix": "Windsurf",
+        "release_name_prefix": "Devin Desktop",
     },
     "next": {
-        "url": "https://windsurf.com/editor/releases?type=next",
+        "url": "https://docs.devin.ai/desktop/releases-next",
         "field_name": "nextReleases",
         "tag_prefix": "next-",
-        "release_name_prefix": "Windsurf Next",
+        "release_name_prefix": "Devin Desktop Next",
     },
 }
 
@@ -61,9 +63,17 @@ CANONICAL_TARGETS = [
     },
 ]
 
+MDX_DOWNLOAD_PROPS = {
+    "darwinArm64": ("MacOS", "macOS for Apple Silicon (Archive, .zip)"),
+    "darwinX64": ("MacOS", "macOS for Intel (Archive, .zip)"),
+    "linuxX64": ("Linux", "Linux x64 (.tar.gz)"),
+    "win32Arm64Archive": ("Windows", "Windows arm64 (Archive, .zip)"),
+    "win32X64Archive": ("Windows", "Windows x64 (Archive, .zip)"),
+}
+
 
 def fetch_html(url: str) -> str:
-    request = urllib.request.Request(url, headers={"User-Agent": "windsurf-release-bot/1.0"})
+    request = urllib.request.Request(url, headers={"User-Agent": "devin-desktop-release-bot/1.0"})
     with urllib.request.urlopen(request, timeout=30) as response:
         return response.read().decode("utf-8")
 
@@ -72,7 +82,7 @@ def extract_escaped_json_array(html: str, field_name: str) -> list[dict]:
     marker = f'{field_name}\\":'
     start = html.find(marker)
     if start == -1:
-        raise ValueError(f"Could not find field {field_name!r} in Windsurf releases HTML.")
+        raise ValueError(f"Could not find field {field_name!r} in releases HTML.")
 
     array_start = html.find("[", start)
     if array_start == -1:
@@ -105,6 +115,73 @@ def extract_escaped_json_array(html: str, field_name: str) -> list[dict]:
                 return json.loads(decoded)
 
     raise ValueError(f"Could not find the closing bracket for field {field_name!r}.")
+
+
+def package_name_from_url(url: str) -> str:
+    path = urllib.parse.urlparse(url).path
+    return Path(path).name
+
+
+def extract_mdx_release_components(html: str) -> list[dict]:
+    decoded_html = html.replace("\\n", "\n").replace('\\"', '"').replace("\\\\", "\\")
+    release_pattern = re.compile(r"Release,\s*\{(?P<body>.*?)\n\s*\}\)", re.DOTALL)
+    prop_pattern = re.compile(r'^\s*(?P<name>\w+):\s*"(?P<url>[^"]+)"\s*,?$', re.MULTILINE)
+    title_pattern = re.compile(r'title:\s*"Download (?P<version>[^"]+)"')
+    label_pattern = re.compile(r'label:\s*"v(?P<version>[^"]+)"')
+
+    releases = []
+    seen_versions: set[str] = set()
+    for match in release_pattern.finditer(decoded_html):
+        props = {
+            prop_match.group("name"): prop_match.group("url")
+            for prop_match in prop_pattern.finditer(match.group("body"))
+        }
+        if "linuxX64" not in props:
+            continue
+
+        prelude = decoded_html[max(0, match.start() - 4000) : match.start()]
+        version_match = None
+        for pattern in (title_pattern, label_pattern):
+            matches = list(pattern.finditer(prelude))
+            if matches:
+                version_match = matches[-1]
+                break
+        if version_match is None:
+            continue
+
+        version = version_match.group("version")
+        if version in seen_versions:
+            continue
+        seen_versions.add(version)
+
+        release = {"version": version, "MacOS": [], "Windows": [], "Linux": []}
+        for prop_name, (platform_name, display_name) in MDX_DOWNLOAD_PROPS.items():
+            url = props.get(prop_name)
+            if not url:
+                continue
+            release[platform_name].append(
+                {
+                    "displayName": display_name,
+                    "url": url,
+                    "name": package_name_from_url(url),
+                    "productVersion": version,
+                }
+            )
+        releases.append(release)
+
+    return releases
+
+
+def extract_releases(html: str, field_name: str) -> list[dict]:
+    try:
+        return extract_escaped_json_array(html, field_name)
+    except ValueError as json_error:
+        releases = extract_mdx_release_components(html)
+        if releases:
+            return releases
+        raise ValueError(
+            f"{json_error} Could not find Devin Desktop MDX release download blocks."
+        ) from json_error
 
 
 def build_manifest(releases: list[dict], channel: str, source_url: str) -> dict:
@@ -179,7 +256,7 @@ def main() -> int:
     channel_config = RELEASE_CHANNELS[args.channel]
     source_url = args.url or channel_config["url"]
     html = fetch_html(source_url)
-    releases = extract_escaped_json_array(html, channel_config["field_name"])
+    releases = extract_releases(html, channel_config["field_name"])
     manifest = build_manifest(releases, args.channel, source_url)
 
     manifest_path = Path(args.manifest_out)

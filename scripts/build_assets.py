@@ -30,7 +30,7 @@ STAMP_FIELDS = {
 
 
 def download_file(url: str, destination: Path) -> None:
-    request = urllib.request.Request(url, headers={"User-Agent": "windsurf-release-bot/1.0"})
+    request = urllib.request.Request(url, headers={"User-Agent": "devin-desktop-release-bot/1.0"})
     with urllib.request.urlopen(request, timeout=120) as response, destination.open("wb") as handle:
         while True:
             chunk = response.read(CHUNK_SIZE)

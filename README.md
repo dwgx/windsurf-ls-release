@@ -1,6 +1,6 @@
 # windsurf-linux-server-release
 
-This repository tracks the latest stable and next Windsurf releases from `https://windsurf.com/editor/releases`, extracts canonical `language_server_*` binaries from archive downloads, and publishes them as GitHub Release assets.
+This repository tracks the latest stable and next Devin Desktop releases from `https://docs.devin.ai/desktop/releases` and `https://docs.devin.ai/desktop/releases-next`, extracts canonical `language_server_*` binaries from archive downloads, and publishes them as GitHub Release assets.
 
 ## Published assets
 

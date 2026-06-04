@@ -16,7 +16,7 @@ def append_detail(lines: list[str], label: str, value: object) -> None:
 def render_notes(summary: dict) -> str:
     channel = summary.get("channel", "stable")
     lines = [
-        f"Extracted language server binaries from Windsurf {summary['version']}.",
+        f"Extracted language server binaries from Devin Desktop {summary['version']}.",
         "",
         f"Release channel: {channel}",
         f"Release tag: {summary['tag']}",
@@ -72,7 +72,7 @@ def render_notes(summary: dict) -> str:
     lines.extend(
         [
             "",
-            "These assets contain extracted language server binaries, not full Windsurf installers.",
+            "These assets contain extracted language server binaries, not full Devin Desktop installers.",
         ]
     )
     return "\n".join(lines) + "\n"
