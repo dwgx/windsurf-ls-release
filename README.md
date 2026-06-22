@@ -1,6 +1,17 @@
-# windsurf-linux-server-release
+# windsurf-ls-release
 
-This repository tracks the latest stable and next Devin Desktop releases from `https://docs.devin.ai/desktop/releases` and `https://docs.devin.ai/desktop/releases-next`, extracts canonical `language_server_*` binaries from archive downloads, and publishes them as GitHub Release assets.
+Maintained release mirror for extracted Windsurf / Devin Desktop `language_server_*`
+binaries used by WindsurfAPI.
+
+This repository tracks the latest stable and next Devin Desktop releases from
+`https://docs.devin.ai/desktop/releases` and
+`https://docs.devin.ai/desktop/releases-next`, extracts canonical
+`language_server_*` binaries from archive downloads, and publishes them as
+GitHub Release assets.
+
+Stable releases are normal releases and may be marked as GitHub's Latest
+release. Next-channel releases are prereleases and are explicitly published with
+`--latest=false`, so `/releases/latest/download/...` remains stable-only.
 
 ## Published assets
 
@@ -29,12 +40,15 @@ Feature-branch runs parse both stable and next release channels and build artifa
 gh run list --branch "$(git branch --show-current)" --limit 5
 RUN_ID="$(gh run list --branch "$(git branch --show-current)" --limit 1 --json databaseId --jq '.[0].databaseId')"
 gh run watch "$RUN_ID"
-gh api repos/CaiJingLong/windsurf-linux-server-release/actions/runs/"$RUN_ID"/artifacts
+gh api repos/dwgx/windsurf-ls-release/actions/runs/"$RUN_ID"/artifacts
 ```
 
 ## Publishing from the default branch
 
 After merging to the default branch, trigger the workflow manually or wait for the daily schedule. Stable releases use tags like `v<version>`, while next releases use tags like `next-v<version>`. If a tag already exists, that channel exits early. Otherwise it creates a draft release, uploads extracted assets, and publishes the release.
+
+Stable publishes as a regular latest release. Next publishes as a prerelease and
+is never marked latest.
 
 ## Local Linux x64 updater
 

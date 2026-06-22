@@ -45,7 +45,7 @@ class UpdateLinuxX64ScriptTests(unittest.TestCase):
         self.releases_html = self.root / "releases.html"
         self.releases_html.write_text(
             (
-                '<a href="/CaiJingLong/windsurf-linux-server-release/releases/tag/'
+                '<a href="/dwgx/windsurf-ls-release/releases/tag/'
                 f'{self.release_tag}">Windsurf 9.9.9</a>'
             ),
             encoding="utf-8",
@@ -302,6 +302,12 @@ class UpdateLinuxX64ScriptTests(unittest.TestCase):
         self.assertNotEqual(completed.returncode, 0)
         self.assertIn("sha256 mismatch", completed.stderr)
         self.assertFalse(self.target_path.exists())
+
+    def test_defaults_to_maintained_dwgx_release_repo(self) -> None:
+        script = SCRIPT_PATH.read_text(encoding="utf-8")
+
+        self.assertIn('OWNER="${LS_REPO_OWNER:-dwgx}"', script)
+        self.assertIn('REPO="${LS_REPO_NAME:-windsurf-ls-release}"', script)
 
 
 if __name__ == "__main__":

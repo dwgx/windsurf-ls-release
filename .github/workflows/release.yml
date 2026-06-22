@@ -172,6 +172,18 @@ jobs:
             --summary "$RUNNER_TEMP/windsurf-release/$RELEASE_CHANNEL/summary.json" \
             --output "$RUNNER_TEMP/windsurf-release/$RELEASE_CHANNEL/release-notes.md"
 
+      - name: Compute release flags
+        if: steps.channel_filter.outputs.enabled == 'true' && steps.release_check.outputs.skip != 'true' && steps.build_assets.outcome == 'success' && steps.publish_mode.outputs.publish == 'true'
+        id: release_flags
+        run: |
+          if [ "$RELEASE_CHANNEL" = "next" ]; then
+            echo "create_flags=--prerelease --latest=false" >> "$GITHUB_OUTPUT"
+            echo "edit_flags=--prerelease" >> "$GITHUB_OUTPUT"
+          else
+            echo "create_flags=--latest" >> "$GITHUB_OUTPUT"
+            echo "edit_flags=--latest" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Create draft release
         if: steps.channel_filter.outputs.enabled == 'true' && steps.release_check.outputs.skip != 'true' && steps.build_assets.outcome == 'success' && steps.publish_mode.outputs.publish == 'true'
         env:
@@ -181,6 +193,7 @@ jobs:
         run: |
           gh release create "$TAG" \
             --draft \
+            ${{ steps.release_flags.outputs.create_flags }} \
             --title "$RELEASE_NAME" \
             --notes-file "$RUNNER_TEMP/windsurf-release/$RELEASE_CHANNEL/release-notes.md"
 
@@ -200,4 +213,5 @@ jobs:
         run: |
           gh release edit "$TAG" \
             --draft=false \
+            ${{ steps.release_flags.outputs.edit_flags }} \
             --notes-file "$RUNNER_TEMP/windsurf-release/$RELEASE_CHANNEL/release-notes.md"

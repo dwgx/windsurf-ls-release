@@ -3,8 +3,8 @@ set -eu
 
 CHANNEL="${LS_CHANNEL:-stable}"
 TARGET_PATH="${LS_BINARY_PATH:-/opt/windsurf/language_server_linux_x64}"
-OWNER="${LS_REPO_OWNER:-CaiJingLong}"
-REPO="${LS_REPO_NAME:-windsurf-linux-server-release}"
+OWNER="${LS_REPO_OWNER:-dwgx}"
+REPO="${LS_REPO_NAME:-windsurf-ls-release}"
 RELEASES_BASE_URL="${LS_RELEASES_BASE_URL:-https://github.com/${OWNER}/${REPO}/releases}"
 GH_PROXY_PREFIX="${GH_PROXY_PREFIX:-https://ghfast.top/}"
 ASSET_NAME="language_server_linux_x64"
