@@ -72,6 +72,15 @@ def render_notes(summary: dict) -> str:
     lines.extend(
         [
             "",
+            "Verification artifacts:",
+            "- release-manifest.json: machine-readable source, target, size, and SHA256 metadata",
+            "- SHA256SUMS: checksums for release assets, including release-manifest.json",
+        ]
+    )
+
+    lines.extend(
+        [
+            "",
             "These assets contain extracted language server binaries, not full Devin Desktop installers.",
         ]
     )

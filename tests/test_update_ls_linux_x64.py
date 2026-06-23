@@ -41,6 +41,7 @@ class UpdateLinuxX64ScriptTests(unittest.TestCase):
             f"{self.release_base_url}/download/{self.release_tag}/language_server_linux_x64"
         )
         self.proxy_asset_url = f"{self.proxy_prefix}{self.direct_asset_url}"
+        self.checksum_url = f"{self.release_base_url}/download/{self.release_tag}/SHA256SUMS"
 
         self.releases_html = self.root / "releases.html"
         self.releases_html.write_text(
@@ -63,6 +64,12 @@ class UpdateLinuxX64ScriptTests(unittest.TestCase):
                 </ul>
                 """
             ).strip(),
+            encoding="utf-8",
+        )
+        self.checksums_path = self.root / "SHA256SUMS"
+        self.checksums_path.write_text(
+            f"{self.binary_sha256}  language_server_linux_x64\n"
+            f"{'d' * 64}  language_server_linux_x64.gz\n",
             encoding="utf-8",
         )
 
@@ -123,7 +130,7 @@ class UpdateLinuxX64ScriptTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.temp_dir.cleanup()
 
-    def write_url_map(self, *, include_proxy: bool = True) -> None:
+    def write_url_map(self, *, include_proxy: bool = True, include_checksums: bool = True) -> None:
         url_map = {
             self.release_base_url: str(self.releases_html),
             f"{self.release_base_url}/tag/{self.release_tag}": str(self.release_page),
@@ -131,6 +138,8 @@ class UpdateLinuxX64ScriptTests(unittest.TestCase):
         }
         if include_proxy:
             url_map[self.proxy_asset_url] = str(self.binary_path)
+        if include_checksums:
+            url_map[self.checksum_url] = str(self.checksums_path)
         self.url_map_path.write_text(json.dumps(url_map), encoding="utf-8")
 
     def run_script(self, *, fail_urls: list[str] | None = None) -> subprocess.CompletedProcess[str]:
@@ -202,7 +211,7 @@ class UpdateLinuxX64ScriptTests(unittest.TestCase):
             calls,
             [
                 self.release_base_url,
-                f"{self.release_base_url}/tag/{self.release_tag}",
+                self.checksum_url,
             ],
         )
 
@@ -225,7 +234,10 @@ class UpdateLinuxX64ScriptTests(unittest.TestCase):
         )
 
         self.assertEqual(completed.returncode, 0, completed.stderr)
-        self.assertIn("Using sha256 command: shasum -a 256", completed.stdout)
+        self.assertRegex(
+            completed.stdout,
+            r"Using sha256 command: (sha256sum|shasum -a 256|openssl dgst -sha256 -r)",
+        )
         self.assertIn("Local file already matches remote sha256", completed.stdout)
 
     def test_fails_when_configured_sha256_command_is_unavailable(self) -> None:
@@ -288,10 +300,19 @@ class UpdateLinuxX64ScriptTests(unittest.TestCase):
         self.assertIn(self.direct_asset_url, calls)
         self.assertIn("Proxy download failed", completed.stdout)
 
-    def test_fails_when_sha256_does_not_match_release_notes(self) -> None:
+    def test_falls_back_to_release_notes_when_sha256sums_is_unavailable(self) -> None:
+        self.write_url_map(include_proxy=True, include_checksums=False)
+
+        completed = self.run_script(fail_urls=[self.checksum_url])
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertIn("SHA256SUMS not available, falling back to release notes", completed.stdout)
+        self.assertTrue(self.target_path.exists())
+
+    def test_fails_when_sha256_does_not_match_sha256sums(self) -> None:
         self.write_url_map(include_proxy=True)
-        self.release_page.write_text(
-            self.release_page.read_text(encoding="utf-8").replace(
+        self.checksums_path.write_text(
+            self.checksums_path.read_text(encoding="utf-8").replace(
                 self.binary_sha256, "0" * 64
             ),
             encoding="utf-8",

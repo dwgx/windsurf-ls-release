@@ -37,6 +37,7 @@ packages. Each release records:
 - upstream package name and product version
 - extracted asset name
 - size and SHA256 for each binary and gzip asset
+- machine-readable release metadata and checksum files
 - extraction failures, if any
 
 The CI fails closed if release discovery or extraction shape changes. Operators
@@ -67,6 +68,25 @@ release URLs, or emergency rollbacks.
 - `language_server_windows_arm.exe.gz`
 - `language_server_windows_x64.exe`
 - `language_server_windows_x64.exe.gz`
+- `release-manifest.json`
+- `SHA256SUMS`
+
+## Verification artifacts
+
+Every new release publishes two verification files alongside the binaries:
+
+- `release-manifest.json`: machine-readable source page, channel, version,
+  target, asset size, SHA256, and upstream package metadata.
+- `SHA256SUMS`: plain checksum file for all release assets except itself,
+  including `release-manifest.json`.
+
+Example Linux x64 verification:
+
+```bash
+curl -fsSLO https://github.com/dwgx/windsurf-ls-release/releases/latest/download/language_server_linux_x64
+curl -fsSLO https://github.com/dwgx/windsurf-ls-release/releases/latest/download/SHA256SUMS
+sha256sum --ignore-missing -c SHA256SUMS
+```
 
 ## Workflow triggers
 

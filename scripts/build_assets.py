@@ -20,6 +20,8 @@ from pathlib import Path
 
 
 CHUNK_SIZE = 1024 * 1024
+RELEASE_MANIFEST_NAME = "release-manifest.json"
+CHECKSUMS_NAME = "SHA256SUMS"
 STAMP_FIELDS = {
     "STABLE_BUILD_SCM_REVISION": "build_revision",
     "STABLE_BUILD_SCM_STATUS": "build_status",
@@ -42,11 +44,13 @@ def download_file(url: str, destination: Path) -> None:
 def extract_archive(archive_path: Path, output_dir: Path, archive_type: str) -> None:
     if archive_type == "zip":
         with zipfile.ZipFile(archive_path) as archive:
+            assert_zip_safe(archive, output_dir)
             archive.extractall(output_dir)
         return
 
     if archive_type == "tar.gz":
         with tarfile.open(archive_path, "r:gz") as archive:
+            assert_tar_safe(archive, output_dir)
             archive.extractall(output_dir)
         return
 
@@ -65,6 +69,23 @@ def find_expected_binary(root: Path, expected_name: str) -> Path:
 def gzip_copy(source: Path, destination: Path) -> None:
     with source.open("rb") as src_handle, gzip.open(destination, "wb") as dst_handle:
         shutil.copyfileobj(src_handle, dst_handle)
+
+
+def assert_archive_member_safe(output_dir: Path, member_name: str) -> None:
+    destination = (output_dir / member_name).resolve()
+    root = output_dir.resolve()
+    if destination != root and root not in destination.parents:
+        raise ValueError(f"Archive member escapes output directory: {member_name}")
+
+
+def assert_zip_safe(archive: zipfile.ZipFile, output_dir: Path) -> None:
+    for member in archive.infolist():
+        assert_archive_member_safe(output_dir, member.filename)
+
+
+def assert_tar_safe(archive: tarfile.TarFile, output_dir: Path) -> None:
+    for member in archive.getmembers():
+        assert_archive_member_safe(output_dir, member.name)
 
 
 def sha256_file(path: Path) -> str:
@@ -97,6 +118,75 @@ def describe_file(path: Path) -> dict:
         "size_human": format_size(size_bytes),
         "sha256": sha256_file(path),
     }
+
+
+def build_release_manifest(summary: dict) -> dict:
+    targets = []
+    assets = []
+
+    for item in summary.get("successful_targets", []):
+        target_assets = []
+        for kind, info_key in (("binary", "binary_info"), ("gzip", "gzip_info")):
+            asset_info = item.get(info_key)
+            if not asset_info:
+                continue
+
+            asset = {
+                "name": asset_info["name"],
+                "target": item["target"],
+                "kind": kind,
+                "size_bytes": asset_info["size_bytes"],
+                "size_human": asset_info["size_human"],
+                "sha256": asset_info["sha256"],
+            }
+            target_assets.append(asset)
+            assets.append(asset)
+
+        target_entry = {
+            "target": item["target"],
+            "display_name": item["display_name"],
+            "binary_name": item["binary_name"],
+            "assets": target_assets,
+        }
+
+        for key in ("package_info", "warning"):
+            if key in item:
+                target_entry[key] = item[key]
+
+        targets.append(target_entry)
+
+    return {
+        "schema_version": 1,
+        "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "channel": summary.get("channel", "stable"),
+        "source_url": summary.get("source_url"),
+        "version": summary["version"],
+        "tag": summary["tag"],
+        "release_name": summary["release_name"],
+        "trust_note": (
+            "Assets are extracted upstream Devin Desktop/Windsurf binaries, "
+            "not source-built artifacts."
+        ),
+        "assets": assets,
+        "targets": targets,
+        "failed_targets": summary.get("failed_targets", []),
+    }
+
+
+def write_release_metadata(summary: dict, dist_dir: Path) -> None:
+    manifest_path = dist_dir / RELEASE_MANIFEST_NAME
+    manifest_path.write_text(
+        json.dumps(build_release_manifest(summary), indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+    checksum_lines = []
+    for path in sorted(dist_dir.iterdir(), key=lambda item: item.name):
+        if not path.is_file() or path.name == CHECKSUMS_NAME:
+            continue
+        checksum_lines.append(f"{sha256_file(path)}  {path.name}")
+
+    (dist_dir / CHECKSUMS_NAME).write_text("\n".join(checksum_lines) + "\n", encoding="utf-8")
 
 
 def format_unix_timestamp(raw_value: str | int | None) -> str | None:
@@ -304,11 +394,13 @@ def main() -> int:
                 if target["required"]:
                     required_failure = True
 
-    Path(args.summary_out).write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
-
     if required_failure:
+        Path(args.summary_out).write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
         print(json.dumps(summary, indent=2), file=sys.stderr)
         return 1
+
+    write_release_metadata(summary, dist_dir)
+    Path(args.summary_out).write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
 
     print(json.dumps(summary, indent=2))
     return 0

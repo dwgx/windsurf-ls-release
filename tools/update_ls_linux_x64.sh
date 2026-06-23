@@ -116,12 +116,40 @@ raise SystemExit(f"Could not find latest release tag with prefix {tag_prefix!r}"
 PY
 )"
 
-release_page_url="${RELEASES_BASE_URL}/tag/${tag}"
-log "Fetching release notes for $tag"
-download_file "$release_page_url" "$release_page_html"
+checksum_url="${RELEASES_BASE_URL}/download/${tag}/SHA256SUMS"
+checksum_path="$tmp_dir/SHA256SUMS"
+expected_sha256=""
 
-expected_sha256="$(
-  python3 - "$release_page_html" <<'PY'
+log "Fetching SHA256SUMS for $tag"
+if download_file "$checksum_url" "$checksum_path"; then
+  expected_sha256="$(
+    python3 - "$checksum_path" "$ASSET_NAME" <<'PY'
+import sys
+from pathlib import Path
+
+checksums = Path(sys.argv[1]).read_text(encoding="utf-8", errors="ignore")
+asset_name = sys.argv[2]
+
+for raw_line in checksums.splitlines():
+    parts = raw_line.strip().split()
+    if len(parts) >= 2 and parts[1] == asset_name and len(parts[0]) == 64:
+        print(parts[0])
+        raise SystemExit(0)
+
+raise SystemExit(f"Could not find sha256 for {asset_name} in SHA256SUMS")
+PY
+  )"
+else
+  log "SHA256SUMS not available, falling back to release notes"
+fi
+
+if [ -z "$expected_sha256" ]; then
+  release_page_url="${RELEASES_BASE_URL}/tag/${tag}"
+  log "Fetching release notes for $tag"
+  download_file "$release_page_url" "$release_page_html"
+
+  expected_sha256="$(
+    python3 - "$release_page_html" <<'PY'
 import re
 import sys
 from pathlib import Path
@@ -139,7 +167,8 @@ if not match:
 
 print(match.group(1))
 PY
-)"
+  )"
+fi
 
 if [ -f "$TARGET_PATH" ]; then
   log "Comparing local sha256 with remote release"
