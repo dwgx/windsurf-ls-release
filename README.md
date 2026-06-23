@@ -3,6 +3,20 @@
 Maintained release mirror for extracted Windsurf / Devin Desktop `language_server_*`
 binaries used by WindsurfAPI.
 
+This is the public binary source used by WindsurfAPI's `install-ls.sh` fallback.
+The user-facing path stays simple:
+
+```bash
+bash install-ls.sh
+```
+
+When WindsurfAPI itself does not publish a matching language server asset, the
+installer downloads from:
+
+```text
+https://github.com/dwgx/windsurf-ls-release/releases/latest/download
+```
+
 This repository tracks the latest stable and next Devin Desktop releases from
 `https://docs.devin.ai/desktop/releases` and
 `https://docs.devin.ai/desktop/releases-next`, extracts canonical
@@ -12,6 +26,34 @@ GitHub Release assets.
 Stable releases are normal releases and may be marked as GitHub's Latest
 release. Next-channel releases are prereleases and are explicitly published with
 `--latest=false`, so `/releases/latest/download/...` remains stable-only.
+
+## Trust and risk model
+
+This repository publishes extracted binaries, not source-built artifacts. Treat
+the assets as redistributed upstream binaries from Devin Desktop/Windsurf
+packages. Each release records:
+
+- source release page and channel
+- upstream package name and product version
+- extracted asset name
+- size and SHA256 for each binary and gzip asset
+- extraction failures, if any
+
+The CI fails closed if release discovery or extraction shape changes. Operators
+who need a private mirror can keep using WindsurfAPI's `WINDSURFAPI_LS_RELEASE`
+override.
+
+## WindsurfAPI integration
+
+WindsurfAPI now defaults its desktop-extracted LS fallback to this repository:
+
+```bash
+WINDSURFAPI_LS_RELEASE=https://github.com/dwgx/windsurf-ls-release/releases/latest/download bash install-ls.sh
+```
+
+The environment variable is optional because current WindsurfAPI releases set
+that URL as the default fallback. It remains useful for private mirrors, pinned
+release URLs, or emergency rollbacks.
 
 ## Published assets
 
